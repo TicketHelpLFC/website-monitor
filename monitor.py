@@ -15,19 +15,16 @@ WEBSITES = [
     },
     {
         "url": "https://www.liverpoolfc.com/tickets/ticket-forwarding",
-        "name": "Ticket Forwarding",
-        "discover_links": False
+        "name": "Ticket Forwarding"
     },
     {
         "url": "https://legacy.liverpoolfc.com/tickets/premier-league-sale-dates",
-        "name": "PL Sale Dates (Legacy)",
-        "discover_links": False
+        "name": "Premier League Sale Dates"
     },
     {
-        "url": "https://legacy.liverpoolfc.com/tickets/ballots",
-        "name": "Ballots (Legacy)",
-        "discover_links": False
-    },
+        "url": "https://legacy.liverpoolfc.com/tickets/ballots?_gl=1*1ai64m2*_ga*MTM2ODk2NTA0NC4xNjY5MzcxMjMz*_ga_Z85D72KGRP*MTY5ODIzMTE2OC42NDcuMS4xNjk4MjMyNjQ4LjYwLjAuMA..",
+        "name": "Ticket Ballots"
+    }
 ]
 
 DATA_FILE = "monitoring_data.json"
