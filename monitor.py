@@ -4,6 +4,55 @@ import json
 import os
 from datetime import datetime
 from bs4 import BeautifulSoup
+import re
+
+def clean_match_title_from_slug(slug: str) -> str:
+    """
+    Ultra-short format:
+    'marseille-v-liverpool-fc-21-jan-2026-0800pm-524'
+      -> 'Marseille vs LFC — 21 Jan — 8:00pm'
+    """
+    slug = slug.strip("/").split("/")[-1]  # ensure it's just the last path chunk
+
+    # Remove trailing numeric id (e.g. -524)
+    slug = re.sub(r"-\d+$", "", slug)
+
+    parts = slug.split("-")
+
+    # Find the date pattern in the slug: dd-mon-yyyy
+    month_set = {"jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"}
+    date_idx = None
+    for i in range(len(parts) - 2):
+        if parts[i].isdigit() and parts[i+1].lower() in month_set and parts[i+2].isdigit() and len(parts[i+2]) == 4:
+            date_idx = i
+            break
+
+    if date_idx is None:
+        return slug.replace("-", " ").title()
+
+    teams_part = parts[:date_idx]
+    day = parts[date_idx]
+    mon = parts[date_idx + 1].title()
+    time_part = parts[date_idx + 3] if len(parts) > date_idx + 3 else ""
+
+    teams_str = " ".join(teams_part)
+    teams_str = teams_str.replace(" v ", " vs ").replace(" V ", " vs ")
+    teams_str = re.sub(r"\bliverpool\s+fc\b", "LFC", teams_str, flags=re.IGNORECASE)
+    teams_str = teams_str.title().replace("Lfc", "LFC")
+
+    cleaned_time = time_part.lower()
+    m = re.match(r"^(\d{2})(\d{2})(am|pm)$", cleaned_time)
+    if m:
+        hh = int(m.group(1))
+        mm = m.group(2)
+        ampm = m.group(3)
+        cleaned_time = f"{hh}:{mm}{ampm}" if hh != 0 else f"12:{mm}{ampm}"
+        cleaned_time = cleaned_time.lstrip("0")
+
+    date_str = f"{day} {mon}"
+    if cleaned_time:
+        return f"{teams_str} — {date_str} — {cleaned_time}"
+    return f"{teams_str} — {date_str}"
 
 # Configuration
 WEBSITES = [
@@ -22,7 +71,7 @@ WEBSITES = [
         "name": "Premier League Sale Dates"
     },
     {
-        "url": "https://legacy.liverpoolfc.com/tickets/ballots?_gl=1*1ai64m2*_ga*MTM2ODk2NTA0NC4xNjY5MzcxMjMz*_ga_Z85D72KGRP*MTY5ODIzMTE2OC42NDcuMS4xNjk4MjMyNjQ4LjYwLjAuMA..",
+        "url": "https://legacy.liverpoolfc.com/tickets/ballots",
         "name": "Ticket Ballots"
     }
 ]
@@ -197,12 +246,18 @@ def monitor_websites():
             print(f"  First time monitoring {name}")
     
     # Send notifications
-    if changes_detected:
-        message = ""
-        for change in changes_detected:
-            message += f"**{change['name']}**\n"
-            message += f"🔗 {change['url']}\n"
-            message += f"🕐 Last check: {change['previous_check']}\n\n"
+    for change in changes_detected:
+    # If it's a discovered ticket page, the slug is at the end of the URL
+    slug = change["url"].rstrip("/").split("/")[-1]
+    pretty = clean_match_title_from_slug(slug)
+
+    # If the URL isn't a match slug (e.g., ticket-forwarding), keep the normal name
+    display_name = pretty if "tickets-availability" in change["url"] else change["name"]
+
+    message += f"**{display_name}**\n"
+    message += f"🔗 {change['url']}\n"
+    message += f"🕐 Last check: {change['previous_check']}\n\n"
+
         
         send_discord_notification(message)
         print(f"\n{len(changes_detected)} change(s) detected and notification sent!")
