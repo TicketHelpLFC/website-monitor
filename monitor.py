@@ -10,13 +10,28 @@ WEBSITES = [
     {
         "url": "https://www.liverpoolfc.com/tickets/tickets-availability",
         "name": "Liverpool FC Tickets",
-        "discover_links": True,  # Automatically find and monitor all linked pages
-        "link_pattern": "/tickets/tickets-availability/"  # Only monitor links containing this
+        "discover_links": True,
+        "link_pattern": "/tickets/tickets-availability/"
     },
-    # Add more sites below if needed
+    {
+        "url": "https://www.liverpoolfc.com/tickets/ticket-forwarding",
+        "name": "Ticket Forwarding",
+        "discover_links": False
+    },
+    {
+        "url": "https://legacy.liverpoolfc.com/tickets/premier-league-sale-dates",
+        "name": "PL Sale Dates (Legacy)",
+        "discover_links": False
+    },
+    {
+        "url": "https://legacy.liverpoolfc.com/tickets/ballots",
+        "name": "Ballots (Legacy)",
+        "discover_links": False
+    },
 ]
 
 DATA_FILE = "monitoring_data.json"
+
 
 def load_previous_data():
     """Load previous monitoring data"""
