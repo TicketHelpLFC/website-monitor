@@ -2,34 +2,40 @@ import requests
 import hashlib
 import json
 import os
+import re
+import difflib
 from datetime import datetime
 from bs4 import BeautifulSoup
-import re
 from dotenv import load_dotenv
+
 load_dotenv()
+
+DATA_FILE = "monitoring_data.json"
+
+WEBSITES = [
+    {
+        "url": "https://www.liverpoolfc.com/tickets/tickets-availability",
+        "name": "Liverpool FC Tickets",
+        "discover_links": True,
+        "link_pattern": "/tickets/tickets-availability/",
+    },
+    {"url": "https://www.liverpoolfc.com/tickets/ticket-forwarding", "name": "Ticket Forwarding"},
+    {"url": "https://legacy.liverpoolfc.com/tickets/premier-league-sale-dates", "name": "Premier League Sale Dates"},
+    {"url": "https://legacy.liverpoolfc.com/tickets/ballots", "name": "Ticket Ballots"},
+]
 
 
 def clean_match_title_from_slug(slug: str) -> str:
-    """
-    Ultra-short format:
-    'marseille-v-liverpool-fc-21-jan-2026-0800pm-524'
-      -> 'Marseille vs LFC — 21 Jan — 8:00pm'
-    """
-    slug = slug.strip("/").split("/")[-1]  # ensure it's just the last path chunk
-
-    # Remove trailing numeric id (e.g. -524)
+    slug = slug.strip("/").split("/")[-1]
     slug = re.sub(r"-\d+$", "", slug)
-
     parts = slug.split("-")
+    month_set = {"jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"}
 
-    # Find the date pattern in the slug: dd-mon-yyyy
-    month_set = {"jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"}
     date_idx = None
     for i in range(len(parts) - 2):
-        if parts[i].isdigit() and parts[i+1].lower() in month_set and parts[i+2].isdigit() and len(parts[i+2]) == 4:
+        if parts[i].isdigit() and parts[i + 1].lower() in month_set and parts[i + 2].isdigit() and len(parts[i + 2]) == 4:
             date_idx = i
             break
-
     if date_idx is None:
         return slug.replace("-", " ").title()
 
@@ -38,8 +44,7 @@ def clean_match_title_from_slug(slug: str) -> str:
     mon = parts[date_idx + 1].title()
     time_part = parts[date_idx + 3] if len(parts) > date_idx + 3 else ""
 
-    teams_str = " ".join(teams_part)
-    teams_str = teams_str.replace(" v ", " vs ").replace(" V ", " vs ")
+    teams_str = " ".join(teams_part).replace(" v ", " vs ").replace(" V ", " vs ")
     teams_str = re.sub(r"\bliverpool\s+fc\b", "LFC", teams_str, flags=re.IGNORECASE)
     teams_str = teams_str.title().replace("Lfc", "LFC")
 
@@ -49,226 +54,195 @@ def clean_match_title_from_slug(slug: str) -> str:
         hh = int(m.group(1))
         mm = m.group(2)
         ampm = m.group(3)
-        cleaned_time = f"{hh}:{mm}{ampm}" if hh != 0 else f"12:{mm}{ampm}"
-        cleaned_time = cleaned_time.lstrip("0")
+        cleaned_time = f"{hh}:{mm}{ampm}".lstrip("0")
 
     date_str = f"{day} {mon}"
-    if cleaned_time:
-        return f"{teams_str} — {date_str} — {cleaned_time}"
-    return f"{teams_str} — {date_str}"
-
-# Configuration
-WEBSITES = [
-    {
-        "url": "https://www.liverpoolfc.com/tickets/tickets-availability",
-        "name": "Liverpool FC Tickets",
-        "discover_links": True,
-        "link_pattern": "/tickets/tickets-availability/"
-    },
-    {
-        "url": "https://www.liverpoolfc.com/tickets/ticket-forwarding",
-        "name": "Ticket Forwarding"
-    },
-    {
-        "url": "https://legacy.liverpoolfc.com/tickets/premier-league-sale-dates",
-        "name": "Premier League Sale Dates"
-    },
-    {
-        "url": "https://legacy.liverpoolfc.com/tickets/ballots",
-        "name": "Ticket Ballots"
-    }
-]
-
-DATA_FILE = "monitoring_data.json"
+    return f"{teams_str} — {date_str} — {cleaned_time}" if cleaned_time else f"{teams_str} — {date_str}"
 
 
 def load_previous_data():
-    """Load previous monitoring data"""
     if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, 'r') as f:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     return {}
 
+
 def save_data(data):
-    """Save monitoring data"""
-    with open(DATA_FILE, 'w') as f:
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
-def get_page_content(url, selector=None):
-    """Fetch and extract content from webpage"""
+
+def normalize_text(html: str, selector: str | None = None) -> str:
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+
+    if selector:
+        el = soup.select_one(selector)
+        text = el.get_text("\n", strip=True) if el else soup.get_text("\n", strip=True)
+    else:
+        text = soup.get_text("\n", strip=True)
+
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    return "\n".join(lines)
+
+
+def get_page_text(url, selector=None):
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-        response = requests.get(url, headers=headers, timeout=30)
-        response.raise_for_status()
-        
-        # If no selector provided, monitor entire page
-        if not selector:
-            return response.text
-        
-        # If selector provided, monitor only that part
-        soup = BeautifulSoup(response.text, 'html.parser')
-        element = soup.select_one(selector)
-        
-        if element:
-            return element.get_text(strip=True)
-        
-        # Fallback to entire page if selector not found
-        print(f"Warning: Selector '{selector}' not found, monitoring entire page")
-        return response.text
+        headers = {"User-Agent": "Mozilla/5.0"}
+        r = requests.get(url, headers=headers, timeout=30)
+        r.raise_for_status()
+        return normalize_text(r.text, selector)
     except Exception as e:
         print(f"Error fetching {url}: {e}")
         return None
 
-def get_content_hash(content):
-    """Generate hash of content for comparison"""
-    return hashlib.sha256(content.encode('utf-8')).hexdigest()
+
+def sha256(s: str) -> str:
+    return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
 
 def discover_links(url, link_pattern):
-    """Discover all links on a page matching a pattern"""
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-        response = requests.get(url, headers=headers, timeout=30)
-        response.raise_for_status()
-        
-        soup = BeautifulSoup(response.text, 'html.parser')
+        headers = {"User-Agent": "Mozilla/5.0"}
+        r = requests.get(url, headers=headers, timeout=30)
+        r.raise_for_status()
+        soup = BeautifulSoup(r.text, "html.parser")
+
+        from urllib.parse import urljoin
+
         links = []
-        
-        for link in soup.find_all('a', href=True):
-            href = link['href']
-            
-            # Convert relative URLs to absolute
-            if href.startswith('/'):
-                from urllib.parse import urljoin
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            if href.startswith("/"):
                 href = urljoin(url, href)
-            
-            # Check if link matches pattern
             if link_pattern in href and href not in links:
                 links.append(href)
-        
         print(f"  Found {len(links)} matching links")
         return links
     except Exception as e:
         print(f"Error discovering links from {url}: {e}")
         return []
 
-def send_discord_notification(message):
-    """Send notification via Discord webhook"""
-    webhook_url = os.environ.get('DISCORD_WEBHOOK_URL')
-    
+
+def send_discord_notification(message: str):
+    webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
     if not webhook_url:
         print("Discord webhook URL not set")
         return
-    
-    # Create embed for richer formatting
-    embed = {
+
+    payload = {
         "embeds": [{
-            "title": "🔔 Website Changes Detected!",
-            "description": message,
-            "color": 5814783,  # Blue color
-            "timestamp": datetime.now().isoformat(),
-            "footer": {
-                "text": "Website Monitor"
-            }
+            "title": "🎟️ TicketHelpLFC — Changes Detected",
+            "description": message[:4096],
+            "color": 0x1E88E5,
+            "timestamp": datetime.utcnow().isoformat(),
+            "footer": {"text": "Website Monitor"},
         }]
     }
-    
+
     try:
-        response = requests.post(webhook_url, json=embed)
-        response.raise_for_status()
+        r = requests.post(webhook_url, json=payload, timeout=20)
+        r.raise_for_status()
         print("Discord notification sent")
     except Exception as e:
         print(f"Failed to send Discord notification: {e}")
 
+
+def diff_preview(old_text: str, new_text: str, max_lines: int = 200) -> str:
+    diff = list(difflib.unified_diff(
+        old_text.splitlines(),
+        new_text.splitlines(),
+        fromfile="before",
+        tofile="after",
+        lineterm=""
+    ))
+    if not diff:
+        return ""
+    return "\n".join(diff[:max_lines])
+
+
 def monitor_websites():
-    """Main monitoring function"""
-    previous_data = load_previous_data()
-    current_data = {}
-    changes_detected = []
-    
-    # Build list of all URLs to monitor
+    previous = load_previous_data()
+    current = {}
+    changes = []
+
     urls_to_check = []
-    
     for site in WEBSITES:
-        if site.get('discover_links'):
-            # Discover linked pages automatically
+        if site.get("discover_links"):
             print(f"Discovering pages from {site['name']}...")
-            discovered_urls = discover_links(site['url'], site.get('link_pattern', ''))
-            
-            for discovered_url in discovered_urls:
+            for u in discover_links(site["url"], site.get("link_pattern", "")):
                 urls_to_check.append({
-                    'url': discovered_url,
-                    'name': f"{site['name']} - {discovered_url.split('/')[-1][:50]}",
-                    'selector': site.get('selector')
+                    "url": u,
+                    "name": f"{site['name']} - {u.split('/')[-1][:50]}",
+                    "selector": site.get("selector"),
                 })
         else:
-            # Single URL to monitor
             urls_to_check.append({
-                'url': site['url'],
-                'name': site['name'],
-                'selector': site.get('selector')
+                "url": site["url"],
+                "name": site["name"],
+                "selector": site.get("selector"),
             })
-    
+
     print(f"\nMonitoring {len(urls_to_check)} total pages...\n")
-    
-    # Check all URLs
+
     for site in urls_to_check:
-        url = site['url']
-        name = site['name']
-        selector = site.get('selector')
-        
+        url = site["url"]
+        name = site["name"]
+        selector = site.get("selector")
+
         print(f"Checking {name}...")
-        
-        content = get_page_content(url, selector)
-        if content is None:
+        text = get_page_text(url, selector)
+        if text is None:
             continue
-            
-        current_hash = get_content_hash(content)
-        current_data[url] = {
+
+        text_snap = text[:12000]
+        h = sha256(text_snap)
+
+        current[url] = {
             "name": name,
-            "hash": current_hash,
+            "hash": h,
             "last_checked": datetime.now().isoformat(),
-            "selector": selector
+            "selector": selector,
+            "text": text_snap,
         }
-        
-        # Check for changes
-        if url in previous_data:
-            if previous_data[url]['hash'] != current_hash:
-                changes_detected.append({
+
+        if url in previous:
+            if previous[url].get("hash") != h:
+                old_text = previous[url].get("text", "")
+                changes.append({
                     "name": name,
                     "url": url,
-                    "previous_check": previous_data[url].get('last_checked', 'Unknown')
+                    "previous_check": previous[url].get("last_checked", "Unknown"),
+                    "diff": diff_preview(old_text, text_snap),
                 })
                 print(f"✓ Change detected on {name}!")
             else:
                 print(f"  No changes on {name}")
         else:
             print(f"  First time monitoring {name}")
-    
-    # Send notifications
-    if changes_detected:
-        message = ""
-        for change in changes_detected:
-            url = change["url"]
-            slug = url.rstrip("/").split("/")[-1]
 
-            pretty = clean_match_title_from_slug(slug)
-            display_name = pretty if "/tickets/tickets-availability/" in url else change["name"]
+    if changes:
+        msg = ""
+        for c in changes:
+            url = c["url"]
+            display = c["name"]
+            if "/tickets/tickets-availability/" in url:
+                display = clean_match_title_from_slug(url.rstrip("/").split("/")[-1])
 
-            message += f"**{display_name}**\n"
-            message += f"🔗 {url}\n"
-            message += f"🕐 Last check: {change['previous_check']}\n\n"
+            msg += f"**{display}**\n🔗 {url}\n🕐 Prev: {c['previous_check']}\n"
+            if c["diff"]:
+                snippet = c["diff"][:3200]
+                msg += f"```diff\n{snippet}\n```\n"
+            msg += "\n"
 
-        send_discord_notification(message)
-        print(f"\n{len(changes_detected)} change(s) detected and notification sent!")
+        send_discord_notification(msg)
+        print(f"\n{len(changes)} change(s) detected and notification sent!")
     else:
         print("\nNo changes detected on any monitored websites")
-    
-    # Save current state
-    save_data(current_data)
+
+    save_data(current)
+
 
 if __name__ == "__main__":
     monitor_websites()
