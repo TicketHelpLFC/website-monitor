@@ -4,7 +4,7 @@ name: Website Monitor
 on:
   schedule:
     # Runs every 6 hours (adjust as needed)
-    - cron: '*/10 * * * *'
+    - cron: '*/20 * * * *'
   workflow_dispatch: # Allows manual triggering
 
 jobs:
