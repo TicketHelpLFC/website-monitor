@@ -1,0 +1,12 @@
+
+.env
+monitoring_data.json
+monitor.log
+heartbeat.log
+__pycache__/
+
+.env
+monitoring_data.json
+monitor.log
+heartbeat.log
+__pycache__/
