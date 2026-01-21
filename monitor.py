@@ -245,27 +245,24 @@ def monitor_websites():
         else:
             print(f"  First time monitoring {name}")
     
-
-        # Send notifications
+    # Send notifications
     if changes_detected:
-    message = ""
-                for change in changes_detected:
-        url = change["url"]
-        slug = url.rstrip("/").split("/")[-1]
+        message = ""
+        for change in changes_detected:
+            url = change["url"]
+            slug = url.rstrip("/").split("/")[-1]
 
-        pretty = clean_match_title_from_slug(slug)
-        display_name = pretty if "/tickets/tickets-availability/" in url else change["name"]
+            pretty = clean_match_title_from_slug(slug)
+            display_name = pretty if "/tickets/tickets-availability/" in url else change["name"]
 
-        message += f"**{display_name}**\n"
-        message += f"🔗 {url}\n"
-        message += f"🕐 Last check: {change['previous_check']}\n\n"
+            message += f"**{display_name}**\n"
+            message += f"🔗 {url}\n"
+            message += f"🕐 Last check: {change['previous_check']}\n\n"
 
-    send_discord_notification(message)
-    print(f"\n{len(changes_detected)} change(s) detected and notification sent!")
-else:
-    print("\nNo changes detected on any monitored websites")
-
-
+        send_discord_notification(message)
+        print(f"\n{len(changes_detected)} change(s) detected and notification sent!")
+    else:
+        print("\nNo changes detected on any monitored websites")
     
     # Save current state
     save_data(current_data)
