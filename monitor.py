@@ -245,18 +245,15 @@ def monitor_websites():
         else:
             print(f"  First time monitoring {name}")
     
-    # Send notifications
-    for change in changes_detected:
-    # If it's a discovered ticket page, the slug is at the end of the URL
-    slug = change["url"].rstrip("/").split("/")[-1]
-    pretty = clean_match_title_from_slug(slug)
+      for change in changes_detected:
+        slug = change["url"].rstrip("/").split("/")[-1]
+        pretty = clean_match_title_from_slug(slug)
+        display_name = pretty if "/tickets/tickets-availability/" in change["url"] else change["name"]
 
-    # If the URL isn't a match slug (e.g., ticket-forwarding), keep the normal name
-    display_name = pretty if "tickets-availability" in change["url"] else change["name"]
+        message += f"**{display_name}**\n"
+        message += f"🔗 {change['url']}\n"
+        message += f"🕐 Last check: {change['previous_check']}\n\n"
 
-    message += f"**{display_name}**\n"
-    message += f"🔗 {change['url']}\n"
-    message += f"🕐 Last check: {change['previous_check']}\n\n"
 
         
         send_discord_notification(message)
