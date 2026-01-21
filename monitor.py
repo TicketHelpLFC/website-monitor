@@ -245,10 +245,11 @@ def monitor_websites():
         else:
             print(f"  First time monitoring {name}")
     
-     # Send notifications
-if changes_detected:
+
+        # Send notifications
+    if changes_detected:
     message = ""
-    for change in changes_detected:
+                for change in changes_detected:
         url = change["url"]
         slug = url.rstrip("/").split("/")[-1]
 
@@ -263,6 +264,7 @@ if changes_detected:
     print(f"\n{len(changes_detected)} change(s) detected and notification sent!")
 else:
     print("\nNo changes detected on any monitored websites")
+
 
     
     # Save current state
