@@ -8,23 +8,12 @@ from bs4 import BeautifulSoup
 # Configuration
 WEBSITES = [
     {
-        "url": "https://example.com/product",
-        "name": "Product Page"
+        "url": "https://www.liverpoolfc.com/tickets/tickets-availability",
+        "name": "Liverpool FC Tickets",
+        "discover_links": True,  # Automatically find and monitor all linked pages
+        "link_pattern": "/tickets/tickets-availability/"  # Only monitor links containing this
     },
-    {
-        "url": "https://news.ycombinator.com",
-        "name": "Hacker News"
-    },
-    {
-        "url": "https://github.com/trending",
-        "name": "GitHub Trending"
-    },
-    {
-        "url": "https://yourstore.com/availability",
-        "name": "Stock Check",
-        "selector": ".stock-status"  # Optional: specify selector to monitor only specific part
-    },
-    # Add as many as you want!
+    # Add more sites below if needed
 ]
 
 DATA_FILE = "monitoring_data.json"
@@ -72,6 +61,36 @@ def get_content_hash(content):
     """Generate hash of content for comparison"""
     return hashlib.sha256(content.encode('utf-8')).hexdigest()
 
+def discover_links(url, link_pattern):
+    """Discover all links on a page matching a pattern"""
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        response = requests.get(url, headers=headers, timeout=30)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        links = []
+        
+        for link in soup.find_all('a', href=True):
+            href = link['href']
+            
+            # Convert relative URLs to absolute
+            if href.startswith('/'):
+                from urllib.parse import urljoin
+                href = urljoin(url, href)
+            
+            # Check if link matches pattern
+            if link_pattern in href and href not in links:
+                links.append(href)
+        
+        print(f"  Found {len(links)} matching links")
+        return links
+    except Exception as e:
+        print(f"Error discovering links from {url}: {e}")
+        return []
+
 def send_discord_notification(message):
     """Send notification via Discord webhook"""
     webhook_url = os.environ.get('DISCORD_WEBHOOK_URL')
@@ -106,10 +125,36 @@ def monitor_websites():
     current_data = {}
     changes_detected = []
     
+    # Build list of all URLs to monitor
+    urls_to_check = []
+    
     for site in WEBSITES:
+        if site.get('discover_links'):
+            # Discover linked pages automatically
+            print(f"Discovering pages from {site['name']}...")
+            discovered_urls = discover_links(site['url'], site.get('link_pattern', ''))
+            
+            for discovered_url in discovered_urls:
+                urls_to_check.append({
+                    'url': discovered_url,
+                    'name': f"{site['name']} - {discovered_url.split('/')[-1][:50]}",
+                    'selector': site.get('selector')
+                })
+        else:
+            # Single URL to monitor
+            urls_to_check.append({
+                'url': site['url'],
+                'name': site['name'],
+                'selector': site.get('selector')
+            })
+    
+    print(f"\nMonitoring {len(urls_to_check)} total pages...\n")
+    
+    # Check all URLs
+    for site in urls_to_check:
         url = site['url']
         name = site['name']
-        selector = site.get('selector')  # Optional, defaults to None (entire page)
+        selector = site.get('selector')
         
         print(f"Checking {name}...")
         
