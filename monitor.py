@@ -5,6 +5,9 @@ import os
 from datetime import datetime
 from bs4 import BeautifulSoup
 import re
+from dotenv import load_dotenv
+load_dotenv()
+
 
 def clean_match_title_from_slug(slug: str) -> str:
     """
